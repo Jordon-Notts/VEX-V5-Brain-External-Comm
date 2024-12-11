@@ -57,3 +57,23 @@ An interupt can be made when a pin, lets call it a clock pin is pulled high. The
 - [ ] a means to reject error in transmition
 - [ ] wrap the code in some wrapper so that it is easy to use
 - [ ] write the code in such a way, that it can be tested on micropython
+
+## I2c
+
+The idea for using a protocol simlar to i2c was considered. Where the clock pin syncs the timing of the v5 brain with the sender. ie When the clock pin is pulled high the v5 Brain reads the data pin.
+
+This would require the 5v brain to make some sort of judgement on when the data transmission has finished and when to decode the payload. This could either be done on every falling slope interup the clock pin the data is analyised or with regular polling.
+
+Checking the lenght of the data on every clock pulse is a waste of processing power. At this point the idea of using a protocol simlar to SPI was considered.
+
+## SPI
+
+The idea for this porticol is that the data is read by the v5 brain then the clock pin is pulled high, however the addtion of a chip select pin is used.
+
+The chipselect pin is pulled high the entirety of the the data transmittion. When the chip select pin is pulled low the 5v Brain knows to analylise the data.
+
+The follwing interupts can be made to read to transmit data from the sender to the v5 brain.
+
+1. Clock_pin when pulled high the data pin is read
+2. Chip select when pulled high the buffer is cleared
+3. chip select when pulled low, the data in the buffer is analyised.
