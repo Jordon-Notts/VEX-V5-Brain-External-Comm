@@ -1,0 +1,18 @@
+{
+	"extension": {
+		"version": "0.6.1",
+		"json": 2
+	},
+	"project": {
+		"name": "Recieve_SPI_v5_Brain",
+		"description": "",
+		"creationDate": "08/12/2024, 11:51:12",
+		"platform": "V5",
+		"language": "python",
+		"slot": 1,
+		"sdkVersion": "V5_1_0_1_25",
+		"python": {
+			"main": "micropython/micropython.py"
+		}
+	}
+}
