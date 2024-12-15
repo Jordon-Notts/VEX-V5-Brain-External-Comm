@@ -1,8 +1,14 @@
 from machine import Pin
+from neopixel import NeoPixel
+import time
 
-clock = Pin(19, Pin.IN, Pin.PULL_DOWN)
-data_port = Pin(18, Pin.IN, Pin.PULL_DOWN)
-cs_port = Pin(20, Pin.IN, Pin.PULL_DOWN)
+clock = Pin(19, Pin.IN)
+data_port = Pin(18, Pin.IN)
+cs_port = Pin(20, Pin.IN)
+
+led_pin = Pin(23, Pin.OUT)
+
+pixel = NeoPixel(led_pin,1)
 
 class V5ExternalComm:
     """
@@ -11,7 +17,7 @@ class V5ExternalComm:
     LENGTH_FIELD_SIZE = 8  # Fixed size for length field (in bits)
     CHECKSUM_FIELD_SIZE = 8  # Fixed size for checksum field (in bits)
 
-    def __init__(self, clock, data_port, cs_port, on_message=None):
+    def __init__(self, clock, data_port, cs_port, on_error=None, on_message=None):
         """
         Initialize the BitReader instance.
 
@@ -27,18 +33,20 @@ class V5ExternalComm:
             length, data, checksum, and validity as arguments.
         """
         # Initialize pins
-        self.cs = cs_port  # CS pin
-        self.data = data_port  # Data pin
-        self.clock = clock  # Clock pin
+        self.cs_pin = cs_port  # CS pin
+        self.data_pin = data_port  # Data pin
+        self.clock_pin = clock  # Clock pin
 
         # Initialize payload
         self.payload = []
 
         # User-defined callback
         self.on_message = on_message
+        self.on_error = on_error
 
     def handle_cs_rising_edge(self, pin):
         # Reset payload for the next sequence
+        # print("Payload reset")
         self.payload = []
 
     def handle_clock_rising_edge(self, pin):
@@ -46,18 +54,14 @@ class V5ExternalComm:
         Handle clock rising edge to read a data bit.
         """
         # Check if CS is active (high)
-        if self.cs.value() == 1:
+        if self.cs_pin.value() == 1:
             # Read the data pin and append the bit to the payload
-            self.payload.append(self.data.value())
-
-    def send_string(self, string):
-        pass
+            self.payload.append(self.data_pin.value())
 
     def handle_cs_falling_edge(self, pin):
         """
         Handle CS falling edge to process the payload.
         """
-        print(self.payload)
 
         if self.payload:
             # Decode the payload into its components
@@ -66,9 +70,12 @@ class V5ExternalComm:
             if valid:
                 # Trigger the on_message callback if defined
                 if self.on_message:
-                    self.on_message(length, data, checksum, valid)
+                    self.on_message(data)
             else:
-                self.send_string("ERROR")
+                if self.on_error:
+                    self.on_error([length, data, checksum, valid])
+
+        self.handle_cs_rising_edge(pin)
 
     def decode_payload(self, bits):
         index = 0
@@ -106,8 +113,7 @@ class V5ExternalComm:
 
         return length_in_bytes, data_str, checksum, valid
 
-
-def display_blocks(length, data, checksum, valid):
+def data_recieved(data):
     """
     Callback to display the received blocks on the Brain's screen.
 
@@ -121,20 +127,28 @@ def display_blocks(length, data, checksum, valid):
     - valid: bool
         Whether the checksum is valid.
     """
-    print("Len: {}, Data: {}, Chksum: {}, Valid: {}".format(
-        length,
-        data if data else "None",
-        checksum if checksum is not None else "None",
-        valid
-    ))
+    pixel.fill([0,80,0])
+    pixel.write()
+    print("Data: '{}'".format(data))
+    time.sleep(0.04)
+    pixel.fill([0,0,0])
+    pixel.write()
 
+def error(message):
+    pixel.fill([80,0,0])
+    pixel.write()
+    print("ERROR")
+    time.sleep(0.04)
+    pixel.fill([0,0,0])
+    pixel.write()
 
 # Create an instance of BitReader with the callback
 arduino = V5ExternalComm(
     clock=clock,
     data_port=data_port,
     cs_port=cs_port,
-    on_message=display_blocks
+    on_message=data_recieved,
+    on_error=error
 )
 
 cs_port.irq(trigger=cs_port.IRQ_RISING, handler=arduino.handle_cs_rising_edge)

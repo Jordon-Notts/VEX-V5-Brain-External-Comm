@@ -51,13 +51,6 @@ A protocol where the sender changes the data signal at know interval, and the re
 
 An interupt can be made when a pin, lets call it a clock pin is pulled high. The interupt can cause the 5v brain to carry out some action, lets say read the value of the data pin.
 
-# Objectives
-
-- [ ] fast reliable data tranfer between Vex 5v brain and raspberry pi or arduino
-- [ ] a means to reject error in transmition
-- [ ] wrap the code in some wrapper so that it is easy to use
-- [ ] write the code in such a way, that it can be tested on micropython
-
 ## I2c
 
 The idea for using a protocol simlar to i2c was considered. Where the clock pin syncs the timing of the v5 brain with the sender. ie When the clock pin is pulled high the v5 Brain reads the data pin.
@@ -77,3 +70,14 @@ The follwing interupts can be made to read to transmit data from the sender to t
 1. Clock_pin when pulled high the data pin is read
 2. Chip select when pulled high the buffer is cleared
 3. chip select when pulled low, the data in the buffer is analyised.
+
+# Objectives
+
+- [x] fast reliable data tranfer between Vex 5v brain and raspberry pi or arduino
+- [x] a means to reject error in transmition
+- [x] wrap the code in some wrapper so that it is easy to use
+- [x] write the code in such a way, that it can be tested on micropython
+- [ ] Arduino
+- [x] Micropython
+- [ ] Raspberry Pi
+- [ ] VexV5 Brain
