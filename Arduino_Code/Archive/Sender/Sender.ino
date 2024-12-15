@@ -5,7 +5,7 @@
 unsigned long previousMillis = 0; // Stores the last time millis was sent
 const unsigned long interval = 1000; // Interval in milliseconds
 
-const int pin_change_delay = 200; // Delay for the 5V brain to register pin changes (in microseconds)
+const int pin_change_delay = 10; // Delay for the 5V brain to register pin changes (in microseconds)
 
 void setup() {
   pinMode(CS_PIN, OUTPUT);    // Set CS as an output
