@@ -1,217 +1,200 @@
-# Import necessary modules
 import RPi.GPIO as GPIO
 import time
 
 class V5ExternalComm:
-    """
-    This class facilitates communication with an external device using clock, data, 
-    and chip select (CS) pins. It also includes LED indication and payload processing.
-    """
-
-    def __init__(self, cs_pin_number, clock_pin_number, data_pin_number, on_message_received=None):
-        """
-        Initialize the V5ExternalComm class for communication with an external device.
-
-        Parameters:
-        - cs_pin_number (int): GPIO pin number for the Chip Select (CS) signal.
-            This pin is used to indicate when the external device is ready to send or receive data. 
-            The CS pin is usually active LOW (0 means communication is active).
-
-        - clock_pin_number (int): GPIO pin number for the Clock signal.
-            The Clock pin determines when bits are transmitted or received. A rising clock edge is
-            typically used to synchronize data transfer.
-
-        - data_pin_number (int): GPIO pin number for the Data signal.
-            This pin carries the actual data bits being sent to or received from the external device.
-
-        - on_message_received (callable, optional): A callback function to handle messages when they are successfully received.
-            The callback function should accept a single parameter (the received message as a string).
-        """
-
-        # Store the pin numbers provided by the user for later use
-        self.cs_pin_number = cs_pin_number
-        self.clock_pin_number = clock_pin_number
-        self.data_pin_number = data_pin_number
-
-        # Callback function for message handling
+    
+    def __init__(self, cs_pin, clock_pin, data_pin, on_message_received=None):
+        self.cs_pin = cs_pin
+        self.clock_pin = clock_pin
+        self.data_pin = data_pin
+        self.running = False
+        self.cs_active = False  # Indicates if CS is active (HIGH)
+        self.current_byte = []  # Store bits for the current byte
+        self.received_data = []  # Store all received bytes
         self.on_message_received = on_message_received
 
-        # Initialize state variables
-        self.buffer = []  # Buffer for storing received bits during communication
-        self.last_message = ""  # Keeps track of the last valid message sent or received
+        self.last_message = ""
 
-        # Initialize pin objects for CS, Clock, and Data signals.
-        self.cs_pin = None
-        self.clock_pin = None
-        self.data_pin = None
-
-        # Communication configuration constants:
-        self.BIT_DELAY_US = 1000  # Delay between bits in microseconds (1ms)
-        self.MAX_BUFFER_SIZE = 256  # Maximum allowed payload size in bits
-
-        # Flag to indicate the current mode (True = receiving, False = sending)
-        self.reciving = False
-
-        # Set the pins to "receive mode" by default.
         self.set_pins_receive()
 
-    def calculate_checksum(self, data):
+    def process_and_display_buffer(self):
         """
-        Calculate the checksum of the input string.
+        Process and validate the received payload, displaying it in a detailed tabular format.
         """
-        return sum(bytearray(data, 'ascii')) % 256
+        # Convert received data (bytes) to a binary bitstream
+        bitstream = []
 
-    def int_to_bits(self, value, bit_count):
-        """
-        Convert an integer into a list of bits (binary representation).
-        """
-        return [(value >> i) & 1 for i in range(bit_count - 1, -1, -1)]
+        for byte in self.received_data:
+            bitstream.extend([int(bit) for bit in f"{byte:08b}"])  # Convert each byte to 8 bits
 
-    def encode_payload(self, length, data, checksum):
-        """
-        Encode the length, data, and checksum into a single bit stream.
-        """
-        bits = self.int_to_bits(length, 8)  # Encode length (8 bits)
-        for char in data:
-            bits.extend(self.int_to_bits(ord(char), 8))  # Encode each character (8 bits per char)
-        bits.extend(self.int_to_bits(checksum, 8))  # Encode checksum (8 bits)
-        return bits
+        print("\nRECEIVE\nBuffer content (raw):", "".join(map(str, bitstream)))
+
+        if len(bitstream) < 16:
+            print("Error: Buffer too short to process.")
+            return
+
+        try:
+            # Decode length
+            length_bits = bitstream[:8]
+            length = int("".join(map(str, length_bits)), 2)
+            print(f"Length: {length}\tBinary: {''.join(map(str, length_bits))}\n")
+
+            # Check if buffer has enough bits for length, data, and checksum
+            if len(bitstream) < 8 + length * 8 + 8:
+                print("Error: Insufficient bits for data and checksum.")
+                return
+
+            # Decode data
+            data_bits = bitstream[8:8 + length * 8]
+            received_data = []
+            print("Bytes (ASCII and Binary):")
+            for i in range(0, len(data_bits), 8):
+                char_bits = data_bits[i:i + 8]
+                char = chr(int("".join(map(str, char_bits)), 2))
+                received_data.append(char)
+                binary_representation = "".join(map(str, char_bits))
+                print(f"Byte {i // 8 + 1}: ASCII '{char if 32 <= ord(char) <= 126 else '.'}' "
+                    f"({ord(char)}) Binary {binary_representation}")
+
+            decoded_data = "".join(received_data)
+
+            # Decode checksum
+            checksum_bits = bitstream[8 + length * 8:8 + length * 8 + 8]
+            received_checksum = int("".join(map(str, checksum_bits)), 2)
+            print(f"\nChecksum: {received_checksum}\tBinary: {''.join(map(str, checksum_bits))}")
+
+            # Validate checksum
+            calculated_checksum = self.calculate_checksum(decoded_data)
+            if received_checksum == calculated_checksum:
+                print("Checksum validation passed.")
+
+                if decoded_data == "ERROR":
+                    self.send_data(self.last_message)
+                else:
+                    if self.on_message_received:
+                        self.on_message_received(decoded_data)
+            else:
+                print(f"Checksum mismatch. Received: {received_checksum}, Calculated: {calculated_checksum}")
+                self.send_data("ERROR")
+
+        except Exception as e:
+
+            print(f"Error processing buffer: {e}")
+
 
     def send_data(self, data):
         """
         Send data to the external device by toggling clock and data pins.
         """
-        # Ensure the pins are set to receive mode initially
-        self.set_pins_receive()
 
-        # Wait until the CS pin is low (ready state)
-        while self.cs_pin.value() == 1:
-            time.sleep_us(10)  # Short delay to avoid busy-waiting
+        if data != "ERROR":
+            self.last_message = data
 
-        # Switch pins to send mode
-        self.set_pins_send()
+        print(f"\nSEND: {data}\n")
 
-        # Calculate the payload components
+        while True:
+            try:
+                if GPIO.input(self.cs_pin) == 0:
+                    break
+            except:
+                pass
+                time.sleep(0.001)
+
+        self.set_pins_send()  # Configure pins for sending mode
+
+        # Activate CS pin to start transmission
+        GPIO.output(self.cs_pin, GPIO.HIGH)
+        time.sleep(0.00001)  # Brief delay for stability
+
+        # Convert data to binary stream (length, data, checksum)
         length = len(data)
         checksum = self.calculate_checksum(data)
         payload = self.encode_payload(length, data, checksum)
 
-        # Activate CS pin to start transmission
-        self.cs_pin.on()
-        time.sleep_us(10)  # Brief delay for signal stability
-
-        # Send the encoded payload bit by bit
+        # Send each bit in the payload
         for bit in payload:
-            self.data_pin.value(bit)  # Set data pin to the current bit value
-            self.clock_pin.on()  # Toggle clock pin high
-            time.sleep_us(self.BIT_DELAY_US)  # Hold for the bit delay
-            self.clock_pin.off()  # Toggle clock pin low
-            time.sleep_us(self.BIT_DELAY_US)
+            GPIO.output(self.data_pin, bit)  # Set data pin to bit value
+            GPIO.output(self.clock_pin, GPIO.HIGH)  # Rising edge
+            time.sleep(0.0001)  # Delay for clock timing
+            GPIO.output(self.clock_pin, GPIO.LOW)  # Falling edge
 
         # Deactivate CS pin to end transmission
-        self.cs_pin.off()
+        GPIO.output(self.cs_pin, GPIO.LOW)
 
-        print(f"Data sent: {data}")  # Print the sent data for debugging
+        self.set_pins_receive()  # Restore pins to receive mode
 
-        # Reset the pins to receive mode
-        self.set_pins_receive()
-
-    def reset_buffer(self):
+    def encode_payload(self, length, data, checksum):
         """
-        Clear the payload buffer.
+        Encode the length, data, and checksum into a binary stream.
         """
-        self.buffer = []
-
-    def process_buffer(self):
-        """
-        Process and validate the received payload.
-        """
-        # Check if payload has the minimum required bits
-        if len(self.buffer) < 16:
-            return
-
-        # Decode the length from the first 8 bits
-        length_bits = self.buffer[:8]
-        length = int("".join(map(str, length_bits)), 2)
-
-        # Check if payload has sufficient bits for length, data, and checksum
-        if len(self.buffer) >= (8 + length * 8 + 8):
-            data_bits = self.buffer[8:8 + length * 8]
-            data = "".join(
-                chr(int("".join(map(str, data_bits[i:i + 8])), 2)) for i in range(0, len(data_bits), 8))
-
-            checksum_bits = self.buffer[8 + length * 8:8 + length * 8 + 8]
-            received_checksum = int("".join(map(str, checksum_bits)), 2)
-
-            # Validate the checksum
-            if received_checksum == self.calculate_checksum(data):
-
-                if data == "ERROR":
-                    self.send_data(self.last_message)  # Resend last message on error
-                else:
-                    self.last_message = data  # Update last message
-                    if self.on_message_received != None:
-                        self.on_message_received(data)
-                    else:
-                        print(f"Received: {data}")  # Print the received data
-            else:
-
-                self.receive_error()  # Handle checksum mismatch error
-
-            self.reset_buffer()
-
-    def receive_error(self):
-        """
-        Handle errors during reception and send an error message.
-        """
-        print("Error detected. Sending 'ERROR'.")
-        print("Received data (raw):", "".join(map(str, self.buffer)))
-        self.send_data("ERROR")
-
-    def handle_clock_change(self, pin):
-        """
-        Handle clock pin rising edge to read incoming bits.
-        """
-        if self.reciving:
-            if self.cs_pin.value() == 1:  # Only read when CS is active
-                if len(self.buffer) < self.MAX_BUFFER_SIZE:
-                    self.buffer.append(self.data_pin.value())  # Append bit to payload
+        bits = [int(bit) for bit in f"{length:08b}"]  # Length in 8 bits
+        for char in data:
+            bits.extend([int(bit) for bit in f"{ord(char):08b}"])  # ASCII of each character
+        bits.extend([int(bit) for bit in f"{checksum:08b}"])  # Checksum in 8 bits
+        return bits
 
     def handle_cs_change(self, pin):
         """
-        Handle CS pin state changes to manage data transmission.
+        Handles changes on the CS pin and logs when communication starts or ends.
         """
-        if self.reciving:
-            if self.cs_pin.value() == 1:  # CS HIGH: Transmission ends
-                self.reset_buffer()
+        cs_state = GPIO.input(self.cs_pin)
+        self.cs_active = cs_state == 1  # Update CS active state
 
-            else:  # CS LOW: Transmission starts
-                self.process_buffer()
+        if self.cs_active:
+            # print("\nCS ACTIVE (HIGH): Communication started\n")
+            self.current_byte = []  # Reset current byte buffer
+            self.received_data = []  # Clear received data buffer
+        else:
+            # print("\nCS INACTIVE (LOW): Communication ended\n")
+            self.process_and_display_buffer()  # Display the captured data
+
+    def log_pins(self, pin):
+        """
+        Logs the state of the data pin when the clock pin goes high.
+        Captures 8 bits as one byte and calculates its ASCII value.
+        """
+        if self.cs_active:  # Only log if CS is active
+
+            data_state = GPIO.input(self.data_pin)
+            self.current_byte.append(data_state)
+
+            # If we have 8 bits, process the byte
+            if len(self.current_byte) == 8:
+                byte_value = int("".join(map(str, self.current_byte)), 2)  # Convert bits to integer
+                self.received_data.append(byte_value)  # Store the byte
+                self.current_byte = []  # Clear the byte buffer
+
+    def calculate_checksum(self, data):
+        """
+        Calculate the checksum for the given data.
+        """
+        return sum(bytearray(data, 'ascii')) % 256
 
     def set_pins_receive(self):
         """
-        Configure the pins for receiving mode.
+        Configure GPIO pins for receive mode.
         """
-        self.cs_pin = Pin(self.cs_pin_number, Pin.IN)
-        self.clock_pin = Pin(self.clock_pin_number, Pin.IN)
-        self.data_pin = Pin(self.data_pin_number, Pin.IN)
+        GPIO.cleanup()
 
-        self.cs_pin.irq(trigger=Pin.IRQ_RISING, handler=self.handle_cs_change)
-        self.cs_pin.irq(trigger=Pin.IRQ_FALLING, handler=self.handle_cs_change)
-        self.clock_pin.irq(trigger=Pin.IRQ_RISING, handler=self.handle_clock_change)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.cs_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.setup(self.clock_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.setup(self.data_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-        self.reciving = True
+        GPIO.add_event_detect(self.clock_pin, GPIO.RISING, callback=self.log_pins)
+        GPIO.add_event_detect(self.cs_pin, GPIO.BOTH, callback=self.handle_cs_change)
 
     def set_pins_send(self):
         """
-        Configure the pins for sending mode.
+        Configure GPIO pins for send mode.
         """
-        self.reciving = False
+        GPIO.cleanup()
 
-        self.cs_pin = Pin(self.cs_pin_number, Pin.OUT)
-        self.clock_pin = Pin(self.clock_pin_number, Pin.OUT)
-        self.data_pin = Pin(self.data_pin_number, Pin.OUT)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.cs_pin, GPIO.OUT)
+        GPIO.setup(self.clock_pin, GPIO.OUT)
+        GPIO.setup(self.data_pin, GPIO.OUT)
 
-        self.cs_pin.value(0)
-        self.clock_pin.value(0)
-        self.data_pin.value(0)
+        GPIO.output(self.cs_pin, GPIO.LOW)
+        GPIO.output(self.clock_pin, GPIO.LOW)
+        GPIO.output(self.data_pin, GPIO.LOW)
