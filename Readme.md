@@ -77,7 +77,7 @@ The follwing interupts can be made to read to transmit data from the sender to t
 - [x] a means to reject error in transmition
 - [x] wrap the code in some wrapper so that it is easy to use
 - [x] write the code in such a way, that it can be tested on micropython
-- [ ] Arduino
+- [x] Arduino
 - [x] Micropython
-- [ ] Raspberry Pi
+- [x] Raspberry Pi
 - [ ] VexV5 Brain
