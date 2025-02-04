@@ -1,3 +1,4 @@
+
 # Import necessary modules
 import time  # Import the time module for adding delays in the code
 
@@ -5,7 +6,10 @@ import time  # Import the time module for adding delays in the code
 from lib.V5_External_Comm_Lib import V5ExternalComm
 
 # Define a callback function to handle received messages
+
+
 def on_message_recieved_callback(data):
+
     """
     Callback function that gets executed when a message is received by the V5ExternalComm instance.
     
@@ -17,27 +21,22 @@ def on_message_recieved_callback(data):
     """
     print(f"data received : {data}")  # Display the received message
 
-# Example Usage:
-# Create an instance of the V5ExternalComm class, configuring it for your hardware setup.
-transceiver = V5ExternalComm(
-    cs_pin_number=20,         # Chip Select (CS) pin number (GPIO 20)
-    clock_pin_number=19,      # Clock pin number (GPIO 19)
-    data_pin_number=18,       # Data pin number (GPIO 18)
-    on_message_received=on_message_recieved_callback  # Set the callback function for received messages
-)
+if __name__ == "__main__":
 
-# Initialize a counter variable to send sequential messages
-count = 0  # This will be used to incrementally update the message being sent
+    CS_PIN = 21
+    CLOCK_PIN = 22
+    DATA_PIN = 23
 
-# Main loop: This runs continuously
-while True:
-    # Send a message to the external device
-    # The message includes a "Hello" string concatenated with the current count
-    transceiver.send_data("Hello " + str(count))
+    comm = V5ExternalComm(cs_pin=CS_PIN, clock_pin=CLOCK_PIN, data_pin=DATA_PIN, on_message_received=on_message_recieved_callback)
+
+    # Example usage: Send "HELLO"
     
-    # Increment the count for the next message
-    count += 1
+    count = 0 
 
-    # Pause for 0.5 seconds before sending the next message
-    # This delay ensures the communication isn't too rapid, allowing the external device to process
-    time.sleep(0.5)
+    while True:
+
+        comm.send_data(f"RPI_OUT {count}")
+
+        count += 1
+
+        time.sleep(5)
