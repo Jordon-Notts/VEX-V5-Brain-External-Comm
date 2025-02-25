@@ -100,33 +100,6 @@ An error rejection is implemented in the form of expected lenght. Following the 
 
 String data can be of veriainf lenghts, it could be possitble to make every 8 bits a different character and just keep going until the chip select pin is pulled low. It was decided to send a small packet of data at the begining of the trasmition, so that the reciver can carry out dsome sort of validation. ie the first 8 bits represent how long the string is, if the string is longer than this or shorter than this, an error is made, and the data is dis regarded.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant MCU1 as Microcontroller A (Transmitter)
-    participant MCU2 as Microcontroller B (Receiver)
+![](/Images/scope%20cs%20and%20data.jpeg)
 
-    Note over MCU1: Prepare data packet:
-    Note over MCU1: 1. Length (L)
-    Note over MCU1: 2. Data (e.g., "x90,y100")
-    Note over MCU1: 3. Checksum (CS)
-    
-    MCU1->>MCU2: [1 Byte] Length (L)
-    Note over MCU2: Store expected length = L
-
-    MCU1->>MCU2: [L Bytes] String Data <br> e.g., "x90,y100"
-    alt if number of received data bytes != L
-        MCU2->>MCU2: Raise error <br> (length mismatch)
-        MCU2->>MCU2: Discard data
-    else
-        Note over MCU2: Data length ok, accumulate into buffer
-        MCU1->>MCU2: [1 Byte] Checksum (CS)
-        Note over MCU2: Calculate sum of (data bytes) % 255 => CS'
-        alt if CS != CS'
-            MCU2->>MCU2: Raise error <br> (checksum mismatch)
-            MCU2->>MCU2: Discard data
-        else
-            MCU2->>MCU2: Data accepted <br> (length and checksum pass)
-        end
-    end
-```
+the image shows the scope data. The yellow trace shows the data and the blue trace shows the chip select. The fist 8 bits are the lenght of the data stream, the next set of data is the data stream and following the data stream is the check sum.
