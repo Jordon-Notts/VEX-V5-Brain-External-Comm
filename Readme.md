@@ -100,6 +100,7 @@ An error rejection is implemented in the form of expected lenght. Following the 
 
 String data can be of veriainf lenghts, it could be possitble to make every 8 bits a different character and just keep going until the chip select pin is pulled low. It was decided to send a small packet of data at the begining of the trasmition, so that the reciver can carry out dsome sort of validation. ie the first 8 bits represent how long the string is, if the string is longer than this or shorter than this, an error is made, and the data is dis regarded.
 
+```mermaid
 sequenceDiagram
     autonumber
     participant MCU1 as Microcontroller A (Transmitter)
@@ -128,3 +129,4 @@ sequenceDiagram
             MCU2->>MCU2: Data accepted <br> (length and checksum pass)
         end
     end
+```
