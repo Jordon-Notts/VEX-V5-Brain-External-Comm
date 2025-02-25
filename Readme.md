@@ -81,3 +81,50 @@ The follwing interupts can be made to read to transmit data from the sender to t
 - [x] Micropython
 - [x] Raspberry Pi
 - [ ] VexV5 Brain
+
+## Easy to use
+
+### Send strings
+
+Due to time constrants and the data need to travel between differnt microcontollers, the decision was made to send data in string format. Lets say i want to send the x and y posstions from one controlller to the other, i will need some way to destingush the data in the x transmisstion from that of the y transmition. by sending string data i can send 'x90,y100' or however i like. Concepts were concidered where another chip select pin can be toggled depending on what data stream is being trasmitted, however sending straings seams to be the easiest aproch.
+
+### Error rejections
+
+During trials, data quite often makes its way to the reciver, and due to noise, interupts not triggering quick enough or other factors, is corrupt in one way or another. This can either be missing a bit, or more often, one bit being the wrong orientations.
+
+It wass decided to include some sort of check sum. The data stream, ie all the characters values are summed together, this is then devided by a value, 255 in our case and the remainder is sent with the data stream. The reciever then checks the checksum againsts the calculated check sum and if they dont match, an error is raised.
+
+An error rejection is implemented in the form of expected lenght. Following the expected lenght of characters and 8 bit check sum is transmitted. if the sum of the characters, devided by 255 and the remainder, do not match the sent chechsum than an error is raised and the data is rejected.
+
+### Different lenght
+
+String data can be of veriainf lenghts, it could be possitble to make every 8 bits a different character and just keep going until the chip select pin is pulled low. It was decided to send a small packet of data at the begining of the trasmition, so that the reciver can carry out dsome sort of validation. ie the first 8 bits represent how long the string is, if the string is longer than this or shorter than this, an error is made, and the data is dis regarded.
+
+sequenceDiagram
+    autonumber
+    participant MCU1 as Microcontroller A (Transmitter)
+    participant MCU2 as Microcontroller B (Receiver)
+
+    Note over MCU1: Prepare data packet:
+    Note over MCU1: 1. Length (L)
+    Note over MCU1: 2. Data (e.g., "x90,y100")
+    Note over MCU1: 3. Checksum (CS)
+    
+    MCU1->>MCU2: [1 Byte] Length (L)
+    Note over MCU2: Store expected length = L
+
+    MCU1->>MCU2: [L Bytes] String Data <br> e.g., "x90,y100"
+    alt if number of received data bytes != L
+        MCU2->>MCU2: Raise error <br> (length mismatch)
+        MCU2->>MCU2: Discard data
+    else
+        Note over MCU2: Data length ok, accumulate into buffer
+        MCU1->>MCU2: [1 Byte] Checksum (CS)
+        Note over MCU2: Calculate sum of (data bytes) % 255 => CS'
+        alt if CS != CS'
+            MCU2->>MCU2: Raise error <br> (checksum mismatch)
+            MCU2->>MCU2: Discard data
+        else
+            MCU2->>MCU2: Data accepted <br> (length and checksum pass)
+        end
+    end
